@@ -1,6 +1,5 @@
 #15) Create a python program to manage marks of the students of the school examination using mysql. 
 
-#11) Create a python program to manage marks of the students of the school examination using mysql. 
 
 import mysql.connector
 from mysql.connector import Error
@@ -283,5 +282,6 @@ while True:
     else:
         print("Invalid choice\n")
 # ---------------- CLEANUP ----------------
+
 
 db.close()  
