@@ -8,3 +8,4 @@ with open("input.txt", "r") as infile:
                 outfile.write(line)
 
 print("Lines containing 'a' or 'A' have been removed and rest is written in output.txt")
+
