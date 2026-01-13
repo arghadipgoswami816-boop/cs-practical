@@ -1,6 +1,10 @@
 """8. Create a student table and insert data implement the following sql commands on the student table.
-Alter table to add new attributes.Update table to modify data, Order by to display data in ascending under. Delete to remove tuple (s). 
-Group by and find the min, max, sum, count and average. Admission, name, class, sec"""
+Alter table to add new attributes.
+Update table to modify data
+Order by to display data in ascending under.
+Delete to remove tuple (s).
+Group by and find the min, max, sum, count and average.
+Admission, name, class, sec"""
 
 import mysql.connector as sql
 
@@ -63,18 +67,20 @@ con.commit()
 
 # 6) ORDER BY marks
 print("\nStudents in ascending order of marks:")
+print("(admission, name, class, sec, marks)")
 cur.execute("SELECT * FROM student ORDER BY marks ASC")
 for row in cur.fetchall():
     print(row)
 
 # 7) GROUP BY section → min, max, sum, count, avg
 print("\nSection-wise statistics:")
+print("(section, min_marks, max_marks, sum_marks, count, avg_marks)")
 cur.execute("""
-SELECT sec, 
-MIN(marks), 
-MAX(marks), 
-SUM(marks), 
-COUNT(*), 
+SELECT sec,
+MIN(marks),
+MAX(marks),
+SUM(marks),
+COUNT(*),
 AVG(marks)
 FROM student
 GROUP BY sec
