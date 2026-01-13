@@ -1,13 +1,14 @@
 #2) read a text file line by line and display each word separated by a hash symbol.
 
-with open("input.txt", "r") as file:
-    # Read the file line by line
+# Open the file in read mode.
+with open('input.txt', 'r') as file:
+    # Read file line by line
     for line in file:
-        # Remove extra spaces and newline
-        words = line.strip().split()
-        
-        # Join words using '#'
+        # Remove multiple and extra spaces
+        line = line.strip()
+        # split the line into words
+        words = line.split()
+        # Join words with #
         output = "#".join(words)
-        
-        # Display the result
+        # print the result
         print(output)
