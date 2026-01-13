@@ -1,288 +1,238 @@
-#15) Create a python program to manage marks of the students of the school examination using mysql. 
-
-
+#15)  Make a phonebook by saving the Name and the phone number in the mysql table and when searched by the user, it should fetch the matching contacts also have the facility to edit and delete contacts.
 import mysql.connector
-from mysql.connector import Error
-# ---------------- DB CONNECTION ----------------
-try:
-    db = mysql.connector.connect(
+
+# --- Database initialization ---
+def initialize_database():
+    # Connect without specifying database to create it
+    temp_conn = mysql.connector.connect(
         host="localhost",
         user="root",
-        password="root"
+        password="root123"
     )
-    cur = db.cursor()
-except Error as e:
-    print("MySQL Connection Error:", e)
-    exit()
+    temp_cur = temp_conn.cursor()
 
-# ---------------- DATABASE SETUP ----------------
+    # Create database if it doesn't exist
+    temp_cur.execute("CREATE DATABASE IF NOT EXISTS phonebook_db")
+    temp_conn.commit()
+    temp_conn.close()
 
-cur.execute("CREATE DATABASE IF NOT EXISTS schooldb")
-cur.execute("USE schooldb")
+    # Now connect to the database and create table
+    conn = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="root123",
+        database="phonebook_db"
+    )
+    cur = conn.cursor()
 
-# ---------------- TABLE SETUP ----------------
+    # Create contacts table if it doesn't exist
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS contacts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        phone VARCHAR(15) NOT NULL UNIQUE
+    )
+    """)
+    conn.commit()
+    conn.close()
+    print("Database and table initialized successfully!")
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS marks (
-    rollno INT PRIMARY KEY,
-    name VARCHAR(50),
-    physics INT,
-    chemistry INT,
-    maths INT
-)
-""")
+# --- Database connection ---
+def connect_db():
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="root123",
+        database="phonebook_db"
+    )
 
-db.commit()
+# --- Add new contact (with duplicate checking) ---
+def add_contact():
+    name = input("Enter name: ").strip()
+    phone = input("Enter phone number: ").strip()
 
-# ---------------- AUTO-DETECT ROLL COLUMN ----------------
+    con = connect_db()
+    cur = con.cursor()
 
-cur.execute("DESCRIBE marks")
-columns = cur.fetchall()
-ROLL_COL = columns[0][0]   # first column name dynamically
+    # Check for duplicate phone number
+    cur.execute("SELECT * FROM contacts WHERE phone = %s", (phone,))
+    phone_exists = cur.fetchone()
+    cur.fetchall()  # clear any remaining results (prevents 'Unread result found')
 
-# ---------------- UTILITY ----------------
-
-def student_exists(roll):
-    query = f"SELECT {ROLL_COL} FROM marks WHERE {ROLL_COL}=%s"
-    cur.execute(query, (roll,))
-    return cur.fetchone() is not None
-
-# ---------------- ADD ----------------
-
-def add_student():
-    try:
-        r = int(input("Enter Roll No: "))
-        if student_exists(r):
-            print("Student already exists!\n")
-            return
-
-        n = input("Enter Name: ")
-        p = int(input("Enter Physics Marks: "))
-        c = int(input("Enter Chemistry Marks: "))
-        m = int(input("Enter Maths Marks: "))
-
-        cur.execute(
-            f"INSERT INTO marks VALUES (%s,%s,%s,%s,%s)",
-            (r, n, p, c, m)
-        )
-        db.commit()
-        print("Student Added Successfully!\n")
-
-    except ValueError:
-        print("Invalid input.\n")
-
-# ---------------- SHOW ----------------
-
-def show_all():
-    cur.execute("SELECT * FROM marks")
-    data = cur.fetchall()
-
-    if not data:
-        print("No records found.\n")
+    if phone_exists:
+        print("\nThis phone number already exists. Cannot save duplicate numbers.\n")
+        con.close()
         return
 
-    # Get column names dynamically
-    cur.execute("DESCRIBE marks")
-    columns = cur.fetchall()
-    column_names = [col[0] for col in columns]
+    # Check for duplicate name
+    cur.execute("SELECT * FROM contacts WHERE name = %s", (name,))
+    name_exists = cur.fetchone()
+    cur.fetchall()  # clear again just to be safe
 
-    print("\n*************************** STUDENT MARKS TABLE ***************************")
-    print(f"Database: schooldb  |  Table: marks  |  Records: {len(data)}")
-    print("**************************************************************************")
-
-    # Calculate column widths based on data
-    col_widths = {}
-    for col_name in column_names:
-        col_widths[col_name] = len(col_name)  # Start with header length
-
-    # Check data for maximum widths
-    for student in data:
-        for i, value in enumerate(student):
-            col_name = column_names[i]
-            value_str = str(value)
-            col_widths[col_name] = max(col_widths[col_name], len(value_str))
-
-    # Ensure minimum widths
-    for col_name in column_names:
-        if col_name.lower() == 'rollno':
-            col_widths[col_name] = max(col_widths[col_name], 6)
-        elif col_name.lower() == 'name':
-            col_widths[col_name] = max(col_widths[col_name], 15)
+    if name_exists:
+        print(f"\nThe name '{name}' already exists in your phonebook.")
+        choice = input("Do you want to save it as a copy? (y/n): ").lower()
+        if choice == "y":
+            name = f"{name} (copy)"
+            print(f"Contact will be saved as '{name}'.")
         else:
-            col_widths[col_name] = max(col_widths[col_name], 8)
-
-    # Create table header
-    header_line = ""
-    for i, col_name in enumerate(column_names):
-        header_line += f" {col_name.capitalize():<{col_widths[col_name]}} "
-        if i < len(column_names) - 1:
-            header_line += "|"
-
-    # Create separator line
-    separator_line = ""
-    for i, col_name in enumerate(column_names):
-        separator_line += "-" * (col_widths[col_name] + 2)
-        if i < len(column_names) - 1:
-            separator_line += "+"
-
-    print(header_line)
-    print(separator_line)
-
-    # Display data rows
-    for student in data:
-        row_line = ""
-        for i, value in enumerate(student):
-            col_name = column_names[i]
-            row_line += f" {str(value):<{col_widths[col_name]}} "
-            if i < len(column_names) - 1:
-                row_line += "|"
-        print(row_line)
-
-    print(separator_line)
-    print(f"\n{len(data)} rows in set")
-    print()
-
-# ---------------- SEARCH ----------------
-
-def search():
-    try:
-        r = int(input("Enter Roll No: "))
-        if not student_exists(r):
-            print("Student not found!\n")
+            print("Contact not added.\n")
+            con.close()
             return
 
-        cur.execute(f"SELECT * FROM marks WHERE {ROLL_COL}=%s", (r,))
-        student = cur.fetchone()
+    cur.execute("INSERT INTO contacts (name, phone) VALUES (%s, %s)", (name, phone))
+    con.commit()
+    con.close()
+    print("Contact added successfully!\n")
 
-        # Get column names dynamically
-        cur.execute("DESCRIBE marks")
-        columns = cur.fetchall()
-        column_names = [col[0] for col in columns]
+# --- View all contacts ---
+def view_contacts():
+    con = connect_db()
+    cur = con.cursor()
+    cur.execute("SELECT * FROM contacts")
+    rows = cur.fetchall()
+    if not rows:
+        print("No contacts found!\n")
+    else:
+        print("\n--- All Contacts ---")
+        print("+----+----------------------+----------------+")
+        print("| ID | Name                 | Phone          |")
+        print("+----+----------------------+----------------+")
 
-        print("\n************************* STUDENT DETAILS *************************")
-        print(f"Database: schooldb  |  Table: marks  |  Roll No: {r}")
-        print("******************************************************************")
+        for r in rows:
+            contact_id, name, phone = r
+            print(f"| {contact_id:<2} | {name:<20} | {phone:<14} |")
 
-        # Calculate column widths based on data
-        col_widths = {}
-        for col_name in column_names:
-            col_widths[col_name] = len(col_name)  # Start with header length
+        print("+----+----------------------+----------------+")
+        print(f"\nTotal contacts: {len(rows)}\n")
+    con.close()
 
-        # Check data for maximum widths
-        for i, value in enumerate(student):
-            col_name = column_names[i]
-            value_str = str(value)
-            col_widths[col_name] = max(col_widths[col_name], len(value_str))
+# --- Search contact ---
+def search_contact():
+    keyword = input("Enter name or number to search: ").strip()
+    con = connect_db()
+    cur = con.cursor()
+    cur.execute("SELECT * FROM contacts WHERE name LIKE %s OR phone LIKE %s", (f"%{keyword}%", f"%{keyword}%"))
+    rows = cur.fetchall()
+    if not rows:
+        print("No matching contacts found!\n")
+    else:
+        print(f"\n--- Matching Contacts for '{keyword}' ---")
+        print("+----+----------------------+----------------+")
+        print("| ID | Name                 | Phone          |")
+        print("+----+----------------------+----------------+")
 
-        # Ensure minimum widths
-        for col_name in column_names:
-            if col_name.lower() == 'rollno':
-                col_widths[col_name] = max(col_widths[col_name], 6)
-            elif col_name.lower() == 'name':
-                col_widths[col_name] = max(col_widths[col_name], 15)
+        for r in rows:
+            contact_id, name, phone = r
+            print(f"| {contact_id:<2} | {name:<20} | {phone:<14} |")
+
+        print("+----+----------------------+----------------+")
+        print(f"\nFound {len(rows)} matching contact(s)\n")
+    con.close()
+
+# --- Edit contact ---
+def edit_contact():
+    view_contacts()
+    cid = input("Enter contact ID to edit: ").strip()
+
+    con = connect_db()
+    cur = con.cursor()
+
+    # Fetch current contact details
+    cur.execute("SELECT name, phone FROM contacts WHERE id = %s", (cid,))
+    contact = cur.fetchone()
+    cur.fetchall()  # clear results
+
+    if not contact:
+        print("Contact not found.\n")
+        con.close()
+        return
+
+    old_name, old_phone = contact
+    print(f"\nCurrent Name: {old_name}")
+    print(f"Current Phone: {old_phone}\n")
+
+    # Ask for new values (allow skipping)
+    new_name = input("Enter new name (press Enter to keep same): ").strip()
+    new_phone = input("Enter new phone (press Enter to keep same): ").strip()
+
+    # If user pressed Enter, keep old values
+    if new_name == "":
+        new_name = old_name
+    if new_phone == "":
+        new_phone = old_phone
+
+    # Prevent duplicate phone number (if number changed)
+    if new_phone != old_phone:
+        cur.execute("SELECT * FROM contacts WHERE phone = %s AND id != %s", (new_phone, cid))
+        phone_exists = cur.fetchone()
+        cur.fetchall()
+        if phone_exists:
+            print("\nThis phone number already exists. Cannot use duplicate numbers.\n")
+            con.close()
+            return
+
+    # Handle duplicate name (if name changed)
+    if new_name != old_name:
+        cur.execute("SELECT * FROM contacts WHERE name = %s AND id != %s", (new_name, cid))
+        name_exists = cur.fetchone()
+        cur.fetchall()
+
+        if name_exists:
+            print(f"\nThe name '{new_name}' already exists.")
+            choice = input("Do you want to save it as a copy? (y/n): ").lower()
+            if choice == "y":
+                new_name = f"{new_name} (copy)"
+                print(f" Name will be saved as '{new_name}'.")
             else:
-                col_widths[col_name] = max(col_widths[col_name], 8)
+                print(" Changes not saved.\n")
+                con.close()
+                return
 
-        # Create table header
-        header_line = ""
-        for i, col_name in enumerate(column_names):
-            header_line += f" {col_name.capitalize():<{col_widths[col_name]}} "
-            if i < len(column_names) - 1:
-                header_line += "|"
+    # Update only changed fields
+    cur.execute("UPDATE contacts SET name=%s, phone=%s WHERE id=%s", (new_name, new_phone, cid))
+    con.commit()
+    con.close()
+    print("Contact updated successfully!\n")
 
-        # Create separator line
-        separator_line = ""
-        for i, col_name in enumerate(column_names):
-            separator_line += "-" * (col_widths[col_name] + 2)
-            if i < len(column_names) - 1:
-                separator_line += "+"
 
-        print(header_line)
-        print(separator_line)
+# --- Delete contact ---
+def delete_contact():
+    view_contacts()
+    cid = input("Enter contact ID to delete: ").strip()
+    con = connect_db()
+    cur = con.cursor()
+    cur.execute("DELETE FROM contacts WHERE id=%s", (cid,))
+    con.commit()
+    con.close()
+    print("Contact deleted successfully!\n")
 
-        # Display student data
-        row_line = ""
-        for i, value in enumerate(student):
-            col_name = column_names[i]
-            row_line += f" {str(value):<{col_widths[col_name]}} "
-            if i < len(column_names) - 1:
-                row_line += "|"
-        print(row_line)
-
-        print(separator_line)
-        print("\n1 row in set")
-        print()
-
-    except ValueError:
-        print("Invalid input.\n")
-
-# ---------------- UPDATE ----------------
-
-def update_marks():
-    try:
-        r = int(input("Enter Roll No: "))
-        if not student_exists(r):
-            print("Student does not exist!\n")
-            return
-
-        p = int(input("Physics: "))
-        c = int(input("Chemistry: "))
-        m = int(input("Maths: "))
-
-        cur.execute(
-            f"UPDATE marks SET physics=%s, chemistry=%s, maths=%s WHERE {ROLL_COL}=%s",
-            (p, c, m, r)
-        )
-        db.commit()
-        print("Marks Updated!\n")
-
-    except ValueError:
-        print("Invalid input.\n")
-
-# ---------------- DELETE ----------------
-
-def delete_student():
-    try:
-        r = int(input("Enter Roll No: "))
-        if not student_exists(r):
-            print("Student does not exist!\n")
-            return
-
-        cur.execute(f"DELETE FROM marks WHERE {ROLL_COL}=%s", (r,))
-        db.commit()
-        print("Student Deleted!\n")
-
-    except ValueError:
-        print("Invalid input.\n")
-
-# ---------------- MENU ----------------
+# --- Main menu ---
+# Initialize database and tables on startup
+initialize_database()
 
 while True:
-    print("1. Add Student")
-    print("2. Show All Students")
-    print("3. Search Student")
-    print("4. Update Student Marks")
-    print("5. Delete Student")
+    print("=== PHONEBOOK MENU ===")
+    print("1. Add Contact")
+    print("2. View Contacts")
+    print("3. Search Contact")
+    print("4. Edit Contact")
+    print("5. Delete Contact")
     print("6. Exit")
+    choice = input("Enter your choice: ")
 
-    ch = input("Choice: ")
-
-    if ch == '1':
-        add_student()
-    elif ch == '2':
-        show_all()
-    elif ch == '3':
-        search()
-    elif ch == '4':
-        update_marks()
-    elif ch == '5':
-        delete_student()
-    elif ch == '6':
+    if choice == "1":
+        add_contact()
+    elif choice == "2":
+        view_contacts()
+    elif choice == "3":
+        search_contact()
+    elif choice == "4":
+        edit_contact()
+    elif choice == "5":
+        delete_contact()
+    elif choice == "6":
+        print("Goodbye!")
         break
     else:
-        print("Invalid choice\n")
-# ---------------- CLEANUP ----------------
-
-
-db.close()  
-
+        print("Invalid choice! Please try again.\n")
