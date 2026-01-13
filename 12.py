@@ -1,101 +1,211 @@
-#12 Convert the tables of marks attended by students in MySQL table in CSV data.
-
+import pygame
+import random
 import mysql.connector
-import csv
+import sys
+import hashlib
 
-# --- Database connection setup ---
-conn = mysql.connector.connect(
+# ---------------- DATABASE SETUP ----------------
+
+db = mysql.connector.connect(
     host="localhost",
-    user="root",       
-    password="root",
-    database="schooldb")
-    
-cur = conn.cursor()
+    user="root",
+    password="root123"
+)
+cur = db.cursor()
 
-# --- Create the marks table if not exists ---
+cur.execute("CREATE DATABASE IF NOT EXISTS snakegame")
+cur.execute("USE snakegame")
+
 cur.execute("""
-CREATE TABLE IF NOT EXISTS marks (
-    roll_no INT PRIMARY KEY,
-    name VARCHAR(50),
-    english INT,
-    physics INT,
-    chemistry INT,
-    maths INT,
-    computer INT
+CREATE TABLE IF NOT EXISTS users (
+    username VARCHAR(50) PRIMARY KEY,
+    password VARCHAR(100)
 )
 """)
-conn.commit()
 
+cur.execute("""
+CREATE TABLE IF NOT EXISTS leaderboard (
+    username VARCHAR(50),
+    score INT
+)
+""")
+db.commit()
 
-# --- Function to export table data to CSV ---
-def export_to_csv():
-    cur.execute("SELECT * FROM marks")
-    rows = cur.fetchall()
-    with open("student_marks.csv", "w", newline="") as file:
-        writer = csv.writer(file)
-        writer.writerow(["Roll No", "Name", "English", "Physics", "Chemistry", "Maths", "Computer"])
-        writer.writerows(rows)
-    print("\n📁 Data exported successfully to 'student_marks.csv'!\n")
+# ---------------- SECURITY ----------------
 
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
-# --- Function to add or update student data ---
-def add_or_update_student():
-    roll = int(input("Enter Roll Number: "))
-    name = input("Enter Name: ")
-    eng = int(input("Enter English Marks: "))
-    phy = int(input("Enter Physics Marks: "))
-    chem = int(input("Enter Chemistry Marks: "))
-    math = int(input("Enter Maths Marks: "))
-    comp = int(input("Enter Computer Marks: "))
+# ---------------- USER AUTH ----------------
 
-    # check if roll number already exists
-    cur.execute("SELECT roll_no FROM marks WHERE roll_no = %s", (roll,))
+def register():
+    print("\n--- REGISTER ---")
+    username = input("Choose username: ")
+    password = hash_password(input("Choose password: "))
+
+    cur.execute("SELECT * FROM users WHERE username=%s", (username,))
     if cur.fetchone():
-        cur.execute("""
-            UPDATE marks SET name=%s, english=%s, physics=%s, chemistry=%s, maths=%s, computer=%s
-            WHERE roll_no=%s
-        """, (name, eng, phy, chem, math, comp, roll))
-        print(" Student data updated successfully!")
+        print("Username already exists.")
+        return None
+
+    cur.execute("INSERT INTO users VALUES (%s,%s)", (username, password))
+    db.commit()
+    print("Registration successful.")
+    return username
+
+def login():
+    print("\n--- LOGIN ---")
+    username = input("Username: ")
+    password = hash_password(input("Password: "))
+
+    cur.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
+    if cur.fetchone():
+        print("Login successful.")
+        return username
     else:
-        cur.execute("""
-            INSERT INTO marks (roll_no, name, english, physics, chemistry, maths, computer)
-            VALUES (%s,%s,%s,%s,%s,%s,%s)
-        """, (roll, name, eng, phy, chem, math, comp))
-        print(" New student added successfully!")
+        print("Invalid credentials.")
+        return None
 
-    conn.commit()
+# ---------------- SCORE HANDLING ----------------
 
+def save_score(username, score):
+    cur.execute("INSERT INTO leaderboard VALUES (%s,%s)", (username, score))
+    db.commit()
 
-# --- Function to view all students ---
-def view_students():
-    cur.execute("SELECT * FROM marks")
-    rows = cur.fetchall()
-    if rows:
-        print("\n--- Student Marks Table ---")
-        for row in rows:
-            print(row)
-    else:
-        print("\n(No records found.)")
+def show_leaderboard():
+    cur.execute("""
+        SELECT username, MAX(score) AS best
+        FROM leaderboard
+        GROUP BY username
+        ORDER BY best DESC
+        LIMIT 10
+    """)
+    data = cur.fetchall()
 
+    print("\nTOP LEADERBOARD")
+    for i, row in enumerate(data, 1):
+        print(f"{i}. {row[0]} : {row[1]}")
 
-# --- Main Menu ---
-while True:
-    print("\n====== SCHOOL MARKS MANAGEMENT ======")
-    print("1. View Students")
-    print("2. Add / Update Student Marks")
-    print("3. Convert Table to CSV")
-    print("4. Exit")
+# ---------------- PYGAME SETUP ----------------
 
-    choice = input("Enter choice (1-4): ")
+pygame.init()
 
-    if choice == "1":
-        view_students()
-    elif choice == "2":
-        add_or_update_student()
-    elif choice == "3":
-        export_to_csv()
-    elif choice == "4":
-        print("\nGoodbye ")
-        break
-    else:
-        print("Invalid choice. Try again.")
+WIDTH, HEIGHT = 600, 400
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Snake Game with Login System")
+
+clock = pygame.time.Clock()
+snake_block = 10
+snake_speed = 15
+
+font = pygame.font.SysFont(None, 35)
+
+def message(msg, color):
+    screen.blit(font.render(msg, True, color), [WIDTH / 6, HEIGHT / 3])
+
+# ---------------- GAME LOOP ----------------
+
+def gameLoop():
+    while True:  # Controls replay inside pygame
+
+        x = WIDTH // 2
+        y = HEIGHT // 2
+        x_change = 0
+        y_change = 0
+
+        snake = []
+        length = 1
+
+        foodx = random.randrange(0, WIDTH, 10)
+        foody = random.randrange(0, HEIGHT, 10)
+
+        score = 0
+        game_over = False
+
+        while not game_over:
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT:
+                        x_change, y_change = -10, 0
+                    elif event.key == pygame.K_RIGHT:
+                        x_change, y_change = 10, 0
+                    elif event.key == pygame.K_UP:
+                        x_change, y_change = 0, -10
+                    elif event.key == pygame.K_DOWN:
+                        x_change, y_change = 0, 10
+
+            x += x_change
+            y += y_change
+
+            if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT:
+                game_over = True
+
+            screen.fill((0, 0, 0))
+            pygame.draw.rect(screen, (0, 255, 0), [foodx, foody, 10, 10])
+
+            snake.append([x, y])
+            if len(snake) > length:
+                del snake[0]
+
+            for part in snake[:-1]:
+                if part == [x, y]:
+                    game_over = True
+
+            for part in snake:
+                pygame.draw.rect(screen, (255, 255, 255), [part[0], part[1], 10, 10])
+
+            pygame.display.update()
+
+            if x == foodx and y == foody:
+                foodx = random.randrange(0, WIDTH, 10)
+                foody = random.randrange(0, HEIGHT, 10)
+                length += 1
+                score += 10
+
+            clock.tick(snake_speed)
+
+        # -------- GAME OVER SCREEN --------
+        screen.fill((0, 0, 0))
+        message("Game Over! Press Y to Play Again or N to Exit", (255, 0, 0))
+        pygame.display.update()
+
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_y:
+                        waiting = False  # Restart game
+                    elif event.key == pygame.K_n:
+                        return score  # Exit game and return score
+                elif event.type == pygame.QUIT:
+                    pygame.quit()
+                    sys.exit()
+
+# ---------------- MAIN PROGRAM ----------------
+
+print("SNAKE GAME SYSTEM ")
+print("1. Register")
+print("2. Login")
+
+choice = input("Choose (1/2): ")
+
+player = None
+if choice == "1":
+    player = register()
+elif choice == "2":
+    player = login()
+
+if player:
+    play = input("\nPress Y to Play: ").lower()
+    if play == "y":
+        final_score = gameLoop()
+        save_score(player, final_score)
+        print(f"\n Your Score: {final_score}")
+        show_leaderboard()
+
+pygame.quit()
