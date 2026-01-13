@@ -1,38 +1,27 @@
-#3) read a text file and display the number of vowels, consonants 
-# and uppercase, lowercase characters in the file.
+#3.Read a text file and display the number of vowel s and / consonants, /uppercase, / lowercase, character in the file.
+vowels = set("aeiouAEIOU")
+alphabet = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-def count_characters(file_path):
-    vowels = "aeiouAEIOU"
-    consonants = "bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ"
-    uppercase_count = 0
-    lowercase_count = 0
-    vowel_count = 0
-    consonant_count = 0
+vc = cc = uc = lc = ch = 0
 
-    try:
-        with open(file_path, 'r') as file:
-            content = file.read()
-            for char in content:
-                if char.isalpha():
-                    if char.isupper():
-                        uppercase_count += 1
-                    elif char.islower():
-                        lowercase_count += 1
+with open('input.txt', 'r') as f:
+    for line in f:
+        for c in line:
+            ch += 1
+            if c in vowels:
+                vc += 1
+            elif c in alphabet:
+                cc += 1
 
-                    if char in vowels:
-                        vowel_count += 1
-                    elif char in consonants:
-                        consonant_count += 1
+            if c.isupper():
+                uc += 1
+            elif c.islower():
+                lc += 1
 
-        print(f"Uppercase characters: {uppercase_count}")
-        print(f"Lowercase characters: {lowercase_count}")
-        print(f"Vowels: {vowel_count}")
-        print(f"Consonants: {consonant_count}")
-
-    except FileNotFoundError:
-        print(f"File '{file_path}' not found.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-file_path = 'file.txt'
-count_characters(file_path) 
+print(
+    f"Characters: {ch}\n"
+    f"Vowels: {vc}\n"
+    f"Consonants: {cc}\n"
+    f"Uppercase: {uc}\n"
+    f"Lowercase: {lc}"
+)
