@@ -1,213 +1,285 @@
-#11 Snake Game with SQL for storing score and leaderboard. 
+#11) Create a python program to manage marks of the students of the school examination using mysql. 
 
-import pygame
-import random
 import mysql.connector
-import sys
-import hashlib
+from mysql.connector import Error
+# ---------------- DB CONNECTION ----------------
+try:
+    db = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="root123"
+    )
+    cur = db.cursor()
+except Error as e:
+    print("MySQL Connection Error:", e)
+    exit()
 
 # ---------------- DATABASE SETUP ----------------
 
-db = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="root"
-)
-cur = db.cursor()
+cur.execute("CREATE DATABASE IF NOT EXISTS schooldb")
+cur.execute("USE schooldb")
 
-cur.execute("CREATE DATABASE IF NOT EXISTS snakegame")
-cur.execute("USE snakegame")
+# ---------------- TABLE SETUP ----------------
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    username VARCHAR(50) PRIMARY KEY,
-    password VARCHAR(100)
+CREATE TABLE IF NOT EXISTS marks (
+    rollno INT PRIMARY KEY,
+    name VARCHAR(50),
+    physics INT,
+    chemistry INT,
+    maths INT
 )
 """)
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS leaderboard (
-    username VARCHAR(50),
-    score INT
-)
-""")
 db.commit()
 
-# ---------------- SECURITY ----------------
+# ---------------- AUTO-DETECT ROLL COLUMN ----------------
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+cur.execute("DESCRIBE marks")
+columns = cur.fetchall()
+ROLL_COL = columns[0][0]   # first column name dynamically
 
-# ---------------- USER AUTH ----------------
+# ---------------- UTILITY ----------------
 
-def register():
-    print("\n--- REGISTER ---")
-    username = input("Choose username: ")
-    password = hash_password(input("Choose password: "))
+def student_exists(roll):
+    query = f"SELECT {ROLL_COL} FROM marks WHERE {ROLL_COL}=%s"
+    cur.execute(query, (roll,))
+    return cur.fetchone() is not None
 
-    cur.execute("SELECT * FROM users WHERE username=%s", (username,))
-    if cur.fetchone():
-        print("Username already exists.")
-        return None
+# ---------------- ADD ----------------
 
-    cur.execute("INSERT INTO users VALUES (%s,%s)", (username, password))
-    db.commit()
-    print("Registration successful.")
-    return username
+def add_student():
+    try:
+        r = int(input("Enter Roll No: "))
+        if student_exists(r):
+            print("Student already exists!\n")
+            return
 
-def login():
-    print("\n--- LOGIN ---")
-    username = input("Username: ")
-    password = hash_password(input("Password: "))
+        n = input("Enter Name: ")
+        p = int(input("Enter Physics Marks: "))
+        c = int(input("Enter Chemistry Marks: "))
+        m = int(input("Enter Maths Marks: "))
 
-    cur.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
-    if cur.fetchone():
-        print("Login successful.")
-        return username
-    else:
-        print("Invalid credentials.")
-        return None
+        cur.execute(
+            f"INSERT INTO marks VALUES (%s,%s,%s,%s,%s)",
+            (r, n, p, c, m)
+        )
+        db.commit()
+        print("Student Added Successfully!\n")
 
-# ---------------- SCORE HANDLING ----------------
+    except ValueError:
+        print("Invalid input.\n")
 
-def save_score(username, score):
-    cur.execute("INSERT INTO leaderboard VALUES (%s,%s)", (username, score))
-    db.commit()
+# ---------------- SHOW ----------------
 
-def show_leaderboard():
-    cur.execute("""
-        SELECT username, MAX(score) AS best
-        FROM leaderboard
-        GROUP BY username
-        ORDER BY best DESC
-        LIMIT 10
-    """)
+def show_all():
+    cur.execute("SELECT * FROM marks")
     data = cur.fetchall()
 
-    print("\nTOP LEADERBOARD")
-    for i, row in enumerate(data, 1):
-        print(f"{i}. {row[0]} : {row[1]}")
+    if not data:
+        print("No records found.\n")
+        return
 
-# ---------------- PYGAME SETUP ----------------
+    # Get column names dynamically
+    cur.execute("DESCRIBE marks")
+    columns = cur.fetchall()
+    column_names = [col[0] for col in columns]
 
-pygame.init()
+    print("\n*************************** STUDENT MARKS TABLE ***************************")
+    print(f"Database: schooldb  |  Table: marks  |  Records: {len(data)}")
+    print("**************************************************************************")
 
-WIDTH, HEIGHT = 600, 400
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Snake Game with Login System")
+    # Calculate column widths based on data
+    col_widths = {}
+    for col_name in column_names:
+        col_widths[col_name] = len(col_name)  # Start with header length
 
-clock = pygame.time.Clock()
-snake_block = 10
-snake_speed = 15
+    # Check data for maximum widths
+    for student in data:
+        for i, value in enumerate(student):
+            col_name = column_names[i]
+            value_str = str(value)
+            col_widths[col_name] = max(col_widths[col_name], len(value_str))
 
-font = pygame.font.SysFont(None, 35)
+    # Ensure minimum widths
+    for col_name in column_names:
+        if col_name.lower() == 'rollno':
+            col_widths[col_name] = max(col_widths[col_name], 6)
+        elif col_name.lower() == 'name':
+            col_widths[col_name] = max(col_widths[col_name], 15)
+        else:
+            col_widths[col_name] = max(col_widths[col_name], 8)
 
-def message(msg, color):
-    screen.blit(font.render(msg, True, color), [WIDTH / 6, HEIGHT / 3])
+    # Create table header
+    header_line = ""
+    for i, col_name in enumerate(column_names):
+        header_line += f" {col_name.capitalize():<{col_widths[col_name]}} "
+        if i < len(column_names) - 1:
+            header_line += "|"
 
-# ---------------- GAME LOOP ----------------
+    # Create separator line
+    separator_line = ""
+    for i, col_name in enumerate(column_names):
+        separator_line += "-" * (col_widths[col_name] + 2)
+        if i < len(column_names) - 1:
+            separator_line += "+"
 
-def gameLoop():
-    while True:  # Controls replay inside pygame
+    print(header_line)
+    print(separator_line)
 
-        x = WIDTH // 2
-        y = HEIGHT // 2
-        x_change = 0
-        y_change = 0
+    # Display data rows
+    for student in data:
+        row_line = ""
+        for i, value in enumerate(student):
+            col_name = column_names[i]
+            row_line += f" {str(value):<{col_widths[col_name]}} "
+            if i < len(column_names) - 1:
+                row_line += "|"
+        print(row_line)
 
-        snake = []
-        length = 1
+    print(separator_line)
+    print(f"\n{len(data)} rows in set")
+    print()
 
-        foodx = random.randrange(0, WIDTH, 10)
-        foody = random.randrange(0, HEIGHT, 10)
+# ---------------- SEARCH ----------------
 
-        score = 0
-        game_over = False
+def search():
+    try:
+        r = int(input("Enter Roll No: "))
+        if not student_exists(r):
+            print("Student not found!\n")
+            return
 
-        while not game_over:
+        cur.execute(f"SELECT * FROM marks WHERE {ROLL_COL}=%s", (r,))
+        student = cur.fetchone()
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
+        # Get column names dynamically
+        cur.execute("DESCRIBE marks")
+        columns = cur.fetchall()
+        column_names = [col[0] for col in columns]
 
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_LEFT:
-                        x_change, y_change = -10, 0
-                    elif event.key == pygame.K_RIGHT:
-                        x_change, y_change = 10, 0
-                    elif event.key == pygame.K_UP:
-                        x_change, y_change = 0, -10
-                    elif event.key == pygame.K_DOWN:
-                        x_change, y_change = 0, 10
+        print("\n************************* STUDENT DETAILS *************************")
+        print(f"Database: schooldb  |  Table: marks  |  Roll No: {r}")
+        print("******************************************************************")
 
-            x += x_change
-            y += y_change
+        # Calculate column widths based on data
+        col_widths = {}
+        for col_name in column_names:
+            col_widths[col_name] = len(col_name)  # Start with header length
 
-            if x < 0 or x >= WIDTH or y < 0 or y >= HEIGHT:
-                game_over = True
+        # Check data for maximum widths
+        for i, value in enumerate(student):
+            col_name = column_names[i]
+            value_str = str(value)
+            col_widths[col_name] = max(col_widths[col_name], len(value_str))
 
-            screen.fill((0, 0, 0))
-            pygame.draw.rect(screen, (0, 255, 0), [foodx, foody, 10, 10])
+        # Ensure minimum widths
+        for col_name in column_names:
+            if col_name.lower() == 'rollno':
+                col_widths[col_name] = max(col_widths[col_name], 6)
+            elif col_name.lower() == 'name':
+                col_widths[col_name] = max(col_widths[col_name], 15)
+            else:
+                col_widths[col_name] = max(col_widths[col_name], 8)
 
-            snake.append([x, y])
-            if len(snake) > length:
-                del snake[0]
+        # Create table header
+        header_line = ""
+        for i, col_name in enumerate(column_names):
+            header_line += f" {col_name.capitalize():<{col_widths[col_name]}} "
+            if i < len(column_names) - 1:
+                header_line += "|"
 
-            for part in snake[:-1]:
-                if part == [x, y]:
-                    game_over = True
+        # Create separator line
+        separator_line = ""
+        for i, col_name in enumerate(column_names):
+            separator_line += "-" * (col_widths[col_name] + 2)
+            if i < len(column_names) - 1:
+                separator_line += "+"
 
-            for part in snake:
-                pygame.draw.rect(screen, (255, 255, 255), [part[0], part[1], 10, 10])
+        print(header_line)
+        print(separator_line)
 
-            pygame.display.update()
+        # Display student data
+        row_line = ""
+        for i, value in enumerate(student):
+            col_name = column_names[i]
+            row_line += f" {str(value):<{col_widths[col_name]}} "
+            if i < len(column_names) - 1:
+                row_line += "|"
+        print(row_line)
 
-            if x == foodx and y == foody:
-                foodx = random.randrange(0, WIDTH, 10)
-                foody = random.randrange(0, HEIGHT, 10)
-                length += 1
-                score += 10
+        print(separator_line)
+        print("\n1 row in set")
+        print()
 
-            clock.tick(snake_speed)
+    except ValueError:
+        print("Invalid input.\n")
 
-        # -------- GAME OVER SCREEN --------
-        screen.fill((0, 0, 0))
-        message("Game Over! Press Y to Play Again or N to Exit", (255, 0, 0))
-        pygame.display.update()
+# ---------------- UPDATE ----------------
 
-        waiting = True
-        while waiting:
-            for event in pygame.event.get():
-                if event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_y:
-                        waiting = False  # Restart game
-                    elif event.key == pygame.K_n:
-                        return score  # Exit game and return score
-                elif event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
+def update_marks():
+    try:
+        r = int(input("Enter Roll No: "))
+        if not student_exists(r):
+            print("Student does not exist!\n")
+            return
 
-# ---------------- MAIN PROGRAM ----------------
+        p = int(input("Physics: "))
+        c = int(input("Chemistry: "))
+        m = int(input("Maths: "))
 
-print("SNAKE GAME SYSTEM ")
-print("1. Register")
-print("2. Login")
+        cur.execute(
+            f"UPDATE marks SET physics=%s, chemistry=%s, maths=%s WHERE {ROLL_COL}=%s",
+            (p, c, m, r)
+        )
+        db.commit()
+        print("Marks Updated!\n")
 
-choice = input("Choose (1/2): ")
+    except ValueError:
+        print("Invalid input.\n")
 
-player = None
-if choice == "1":
-    player = register()
-elif choice == "2":
-    player = login()
+# ---------------- DELETE ----------------
 
-if player:
-    play = input("\nPress Y to Play: ").lower()
-    if play == "y":
-        final_score = gameLoop()
-        save_score(player, final_score)
-        print(f"\n Your Score: {final_score}")
-        show_leaderboard()
+def delete_student():
+    try:
+        r = int(input("Enter Roll No: "))
+        if not student_exists(r):
+            print("Student does not exist!\n")
+            return
 
-pygame.quit()
+        cur.execute(f"DELETE FROM marks WHERE {ROLL_COL}=%s", (r,))
+        db.commit()
+        print("Student Deleted!\n")
+
+    except ValueError:
+        print("Invalid input.\n")
+
+# ---------------- MENU ----------------
+
+while True:
+    print("1. Add Student")
+    print("2. Show All Students")
+    print("3. Search Student")
+    print("4. Update Student Marks")
+    print("5. Delete Student")
+    print("6. Exit")
+
+    ch = input("Choice: ")
+
+    if ch == '1':
+        add_student()
+    elif ch == '2':
+        show_all()
+    elif ch == '3':
+        search()
+    elif ch == '4':
+        update_marks()
+    elif ch == '5':
+        delete_student()
+    elif ch == '6':
+        break
+    else:
+        print("Invalid choice\n")
+# ---------------- CLEANUP ----------------
+
+db.close()  
