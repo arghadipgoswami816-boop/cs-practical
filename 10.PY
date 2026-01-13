@@ -1,12 +1,11 @@
 #10) Registering & Login System - Python Interface + SQL Databases
-
 import mysql.connector
 import os, hashlib
 import getpass
 
 DB_HOST = "localhost"
 DB_USER = "root"
-DB_PASS = "root"
+DB_PASS = "root123"
 DB_NAME = "schooldb"
 
 def connect_db():
@@ -33,6 +32,12 @@ def register():
     uname = input("Enter new username: ").strip()
     pwd = getpass.getpass("Enter new password (hidden): ").strip()
 
+    # Validate username doesn't contain spaces
+    if ' ' in uname:
+        print("Username cannot contain spaces. Please try again.")
+        con.close()
+        return
+
     cur.execute("SELECT username FROM users WHERE username=%s", (uname,))
     if cur.fetchone():
         print("Username already exists. Try another.")
@@ -49,6 +54,12 @@ def login():
     con = connect_db(); cur = con.cursor()
     uname = input("Enter username: ").strip()
     pwd = getpass.getpass("Enter password (hidden): ").strip()
+
+    # Validate username doesn't contain spaces
+    if ' ' in uname:
+        print("Username cannot contain spaces.")
+        con.close()
+        return
 
     cur.execute("SELECT salt, pwd_hash FROM users WHERE username=%s", (uname,))
     row = cur.fetchone()
